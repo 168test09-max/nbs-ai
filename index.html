@@ -1,832 +1,448 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  onAuthStateChanged, 
-  signInAnonymously, 
-  signOut,
-  signInWithCustomToken
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  addDoc, 
-  query, 
-  onSnapshot, 
-  serverTimestamp, 
-  deleteDoc, 
-  doc,
-  updateDoc
-} from 'firebase/firestore';
-import { 
-  Bot, 
-  BookOpen, 
-  Link as LinkIcon, 
-  Plus, 
-  LogOut, 
-  ExternalLink, 
-  Trash2, 
-  Share2,
-  Lock,
-  Briefcase,
-  Megaphone,
-  Users,
-  Package,
-  MoreHorizontal,
-  MessageCircle,
-  ClipboardCheck,
-  Sparkles,
-  Search,
-  Settings,
-  Edit,
-  X,
-  Image as ImageIcon,
-  ShieldCheck
-} from 'lucide-react';
-
-// --- 設定區 ---
-
-// 1. Firebase 設定
-const firebaseConfig = {
-  apiKey: "AIzaSyB7RDcx7irw6JyRUx-qhBEMUunH__c0I04",
-  authDomain: "nbs168-ai01.firebaseapp.com",
-  projectId: "nbs168-ai01",
-  storageBucket: "nbs168-ai01.firebasestorage.app",
-  messagingSenderId: "911620241362",
-  appId: "1:911620241362:web:8b49b515749b51c0e37a0b",
-  measurementId: "G-NZTWEVM6H4"
-};
-
-// 2. LOGO 設定
-// 🔴 請將下方的網址換成您 LOGO 的真實網址
-// 💡 替代方案：由於 Imgur 限制，建議使用 https://zh-tw.imgbb.com/ 或 https://postimages.org/
-// 上傳後請複製「直接連結 (Direct Link)」，結尾通常是 .jpg 或 .png
-const LOGO_URL = "https://meee.com.tw/cBmkwvn"; 
-
-// 3. 管理員密碼
-const ADMIN_PASSWORD = "888888"; 
-
-// 資料庫命名空間
-const DB_SCOPE = 'nbs-ai-share';
-
-// 初始化 Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-
-// --- Categories Config ---
-type CategoryType = 'admin' | 'marketing' | 'recruiting' | 'product' | 'community' | 'claims' | 'fun' | 'other';
-
-const CATEGORY_CONFIG: Record<CategoryType, { label: string; icon: any; color: string }> = {
-  admin:      { label: '行政', icon: Briefcase,      color: 'bg-blue-100 text-blue-700' },
-  marketing:  { label: '行銷', icon: Megaphone,      color: 'bg-pink-100 text-pink-700' },
-  recruiting: { label: '增員', icon: Users,          color: 'bg-purple-100 text-purple-700' },
-  product:    { label: '商品', icon: Package,        color: 'bg-orange-100 text-orange-700' },
-  community:  { label: '社群', icon: MessageCircle,  color: 'bg-indigo-100 text-indigo-700' },
-  claims:     { label: '理賠', icon: ClipboardCheck, color: 'bg-red-100 text-red-700' },
-  fun:        { label: '好玩', icon: Sparkles,       color: 'bg-yellow-100 text-yellow-700' },
-  other:      { label: '其它', icon: MoreHorizontal, color: 'bg-gray-100 text-gray-700' },
-};
-
-// ============================================================================
-// 🚀 資料庫匯入區 (固定連結)
-// ============================================================================
-
-const IMPORTED_DATA = [
-  "NBS-分析YT影片 | https://gemini.google.com/gem/a721cbc618f9 | 其它",
-  "NBS-FAB 行銷 LINE 邀約話稿生成器 | https://gemini.google.com/gem/97b7f3ac234f | 行銷",
-  "NBS設計_四格漫畫腳本生成器（金融保險職場版｜合規） | https://gemini.google.com/gem/da1761f3de1a | 社群",
-  "NBS整理_人壽健告填寫、疾病問卷與核保參考指南 | https://notebooklm.google.com/notebook/7824725f-c976-400f-943c-b5097f35766c | 行政",
-  "NBS整理_保戶服務與契約變更事項 | https://notebooklm.google.com/notebook/d69dff67-4ecf-43d1-b71e-06d226f032bd | 行政",
-  "NBS整理_人壽首期保費扣款核印天數指南 | https://notebooklm.google.com/notebook/c9e90e05-b833-44f7-b8a4-9e4ebfca95bf | 行政",
-  "商品_實支實付醫療險保費調漲規定 | https://notebooklm.google.com/notebook/7cc5e453-e49c-448f-b582-ce9e2f20e583 | 商品",
-  "NBS整理_保險職業分類(產壽險) | https://notebooklm.google.com/notebook/5f3e21d1-25b0-4ea2-84fd-e39051513076 | 行政",
-  "NBS整理_人壽體檢醫療院所資料與注意事項 | https://notebooklm.google.com/notebook/7c934959-3f82-4b3d-b670-dd1559e8141f | 行政",
-  "NBS整理_理賠報報：疾病、保險與實務案例 | https://notebooklm.google.com/notebook/e53fb580-1a4f-4cf6-955a-f23019fcfb7a | 理賠",
-  "NBS-冬季戀歌三格圖 – GEM版 | https://gemini.google.com/gem/79e533008773 | 好玩"
-];
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-const parseCategory = (input: string): CategoryType => {
-  const map: Record<string, CategoryType> = {
-    '行政': 'admin',
-    '行銷': 'marketing',
-    '增員': 'recruiting',
-    '商品': 'product',
-    '社群': 'community',
-    '理賠': 'claims',
-    '好玩': 'fun',
-    '其它': 'other'
-  };
-  return map[input?.trim()] || 'other';
-};
-
-const determineType = (url: string): 'gem' | 'notebook' | 'other' => {
-  if (url.includes('gemini.google.com') || url.includes('gem.google.com')) return 'gem';
-  if (url.includes('notebooklm.google.com')) return 'notebook';
-  return 'other';
-};
-
-// --- Types ---
-interface LinkItem {
-  id: string;
-  title: string;
-  url: string;
-  type: 'gem' | 'notebook' | 'other';
-  category: CategoryType;
-  description?: string;
-  createdAt: any;
-  addedBy: string;
-  isFixed?: boolean;
-}
-
-const generateFixedLinks = (): LinkItem[] => {
-  const links: LinkItem[] = [];
-  
-  IMPORTED_DATA.forEach((item, index) => {
-    const parts = item.split('|').map(s => s.trim());
-    if (parts.length >= 2 && parts[0] && parts[1]) {
-      const title = parts[0];
-      const url = parts[1];
-      const categoryStr = parts[2] || '其它';
-      
-      links.push({
-        id: `auto-${index}`,
-        title: title,
-        url: url,
-        type: determineType(url),
-        category: parseCategory(categoryStr),
-        description: '',
-        createdAt: Date.now(), // Use current time for static links
-        addedBy: 'system',
-        isFixed: true
-      });
-    }
-  });
-
-  return links;
-};
-
-const FIXED_LINKS = generateFixedLinks();
-
-// --- Components ---
-
-// 1. Logo Component (With Error Handling)
-const LogoDisplay = ({ className = "" }: { className?: string }) => {
-  const [error, setError] = useState(false);
-
-  if (error || !LOGO_URL) {
-    return (
-      <div className={`bg-indigo-50 flex items-center justify-center ${className}`}>
-        <ImageIcon className="text-indigo-300 w-1/2 h-1/2" />
-      </div>
-    );
-  }
-
-  return (
-    <div className={`bg-white flex items-center justify-center overflow-hidden ${className}`}>
-      <img 
-        src={LOGO_URL} 
-        alt="NBS AI LOGO" 
-        className="w-full h-full object-contain p-1" // object-contain 確保 LOGO 完整顯示不被切裁
-        onError={() => setError(true)}
-      />
-    </div>
-  );
-};
-
-// 2. Login Screen
-const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleLogin = async () => {
-    setIsLoading(true);
-    try {
-      await onLogin();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 flex items-center justify-center p-4">
-      <div className="bg-white/10 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center relative overflow-hidden group">
-        
-        {/* 背景裝飾 */}
-        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
-
-        <div className="w-28 h-28 mx-auto mb-8 rounded-2xl overflow-hidden shadow-2xl shadow-indigo-500/20 bg-white ring-4 ring-white/10">
-          <LogoDisplay className="w-full h-full" />
-        </div>
-        
-        <h1 className="text-2xl font-bold text-white mb-2 tracking-wide">NBS_AI應用分享</h1>
-        <p className="text-indigo-200 mb-8 text-sm font-light">
-          整合 • 效率 • 資源<br/>您的專屬 AI 知識庫
-        </p>
-        
-        <button
-          onClick={handleLogin}
-          disabled={isLoading}
-          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-6 rounded-xl transition-all transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-indigo-900/50"
-        >
-          {isLoading ? (
-            <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span>
-          ) : (
-            <>
-              <Lock className="w-4 h-4" />
-              <span>進入系統</span>
-            </>
-          )}
-        </button>
-      </div>
-    </div>
-  );
-};
-
-// 3. Add/Edit Modal
-const AddLinkModal = ({ 
-  isOpen, 
-  onClose, 
-  onAdd,
-  initialData
-}: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  onAdd: (data: Omit<LinkItem, 'id' | 'createdAt' | 'addedBy'>) => void;
-  initialData?: LinkItem | null;
-}) => {
-  const [title, setTitle] = useState('');
-  const [url, setUrl] = useState('');
-  const [type, setType] = useState<'gem' | 'notebook' | 'other'>('gem');
-  const [category, setCategory] = useState<CategoryType>('other');
-  const [description, setDescription] = useState('');
-
-  useEffect(() => {
-    if (initialData) {
-      setTitle(initialData.title);
-      setUrl(initialData.url);
-      setType(initialData.type);
-      setCategory(initialData.category);
-      setDescription(initialData.description || '');
-    } else {
-      resetForm();
-    }
-  }, [initialData, isOpen]);
-
-  const resetForm = () => {
-    setTitle('');
-    setUrl('');
-    setType('gem');
-    setCategory('other');
-    setDescription('');
-  }
-
-  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newUrl = e.target.value;
-    setUrl(newUrl);
-    setType(determineType(newUrl));
-  };
-
-  if (!isOpen) return null;
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onAdd({ title, url, type, category, description });
-    resetForm();
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10 duration-300">
-        <div className="p-6 max-h-[85vh] overflow-y-auto">
-          <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6 sm:hidden"></div>
-          <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-            {initialData ? <Edit className="w-5 h-5 text-indigo-600" /> : <Plus className="w-5 h-5 text-indigo-600" />}
-            {initialData ? '編輯資源' : '新增資源'}
-          </h2>
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">連結網址 (URL)</label>
-              <input
-                required
-                type="url"
-                value={url}
-                onChange={handleUrlChange}
-                placeholder="https://..."
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:border-transparent outline-none transition-all"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">標題名稱</label>
-              <input
-                required
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="例如：行銷文案小幫手"
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:border-transparent outline-none transition-all"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">業務分類</label>
-              <div className="relative">
-                <select 
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value as CategoryType)}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:border-transparent outline-none appearance-none transition-all"
-                >
-                  {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
-                    <option key={key} value={key}>
-                      {config.label}
-                    </option>
-                  ))}
-                </select>
-                <div className="absolute right-4 top-3.5 pointer-events-none text-gray-400">
-                  <ExternalLink className="w-4 h-4 rotate-90" /> 
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 px-4 py-3.5 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                type="submit"
-                className="flex-1 px-4 py-3.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all active:scale-95"
-              >
-                {initialData ? '儲存變更' : '確認新增'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// 4. Admin Panel Component (管理員後台)
-const AdminPanel = ({ 
-  links, 
-  onDelete, 
-  onEdit, 
-  onClose,
-  onAdd
-}: { 
-  links: LinkItem[], 
-  onDelete: (id: string) => void, 
-  onEdit: (link: LinkItem) => void, 
-  onClose: () => void,
-  onAdd: () => void
-}) => {
-  const [adminSearch, setAdminSearch] = useState('');
-
-  const filteredAdminLinks = links.filter(link => 
-    link.title.toLowerCase().includes(adminSearch.toLowerCase()) ||
-    link.category.includes(adminSearch)
-  );
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95">
-        
-        {/* Header */}
-        <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-          <div className="flex items-center gap-3">
-            <div className="bg-indigo-100 p-2 rounded-lg">
-              <Settings className="w-6 h-6 text-indigo-600" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-gray-800">管理後台</h2>
-              <p className="text-xs text-gray-500">共 {links.length} 筆資料</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
-            <X className="w-6 h-6 text-gray-500" />
-          </button>
-        </div>
-
-        {/* Toolbar */}
-        <div className="p-4 border-b border-gray-100 flex gap-3 bg-white">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="搜尋連結..." 
-              value={adminSearch}
-              onChange={(e) => setAdminSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-            />
-          </div>
-          <button 
-            onClick={onAdd}
-            className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            新增
-          </button>
-        </div>
-
-        {/* List */}
-        <div className="flex-1 overflow-y-auto bg-gray-50 p-4">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <table className="w-full text-left">
-              <thead className="bg-gray-50 border-b border-gray-100">
-                <tr>
-                  <th className="py-3 px-4 font-semibold text-xs text-gray-500 uppercase">標題 / 網址</th>
-                  <th className="py-3 px-4 font-semibold text-xs text-gray-500 uppercase w-24">分類</th>
-                  <th className="py-3 px-4 font-semibold text-xs text-gray-500 uppercase w-20 text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredAdminLinks.map(link => (
-                  <tr key={link.id} className="hover:bg-gray-50 transition-colors group">
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-gray-800 line-clamp-1">{link.title}</div>
-                      <div className="text-xs text-gray-400 line-clamp-1 font-mono">{link.url}</div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`inline-flex px-2 py-1 rounded text-xs font-bold ${CATEGORY_CONFIG[link.category]?.color.replace('text-', 'bg-').replace('700', '100')} ${CATEGORY_CONFIG[link.category]?.color}`}>
-                        {CATEGORY_CONFIG[link.category]?.label}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => onEdit(link)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md">
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => onDelete(link.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {filteredAdminLinks.length === 0 && (
-              <div className="p-8 text-center text-gray-400">
-                無相關資料
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// 5. Main App Component
-export default function App() {
-  const [user, setUser] = useState<any>(null);
-  const [links, setLinks] = useState<LinkItem[]>(FIXED_LINKS);
-  const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [filter, setFilter] = useState<'all' | CategoryType>('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  
-  // Admin States
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [showAdminPanel, setShowAdminPanel] = useState(false);
-  const [editingLink, setEditingLink] = useState<LinkItem | null>(null);
-
-  // --- Auth & Data Effects ---
-  useEffect(() => {
-    const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-         try {
-           await signInWithCustomToken(auth, __initial_auth_token);
-         } catch(e) {}
-      }
-    };
-    initAuth();
-
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      if (!currentUser) setLoading(false);
-    });
-    return () => unsubscribeAuth();
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'artifacts', DB_SCOPE, 'public', 'data', 'sharedLinks'));
-
-    const unsubscribeData = onSnapshot(q, 
-      (snapshot) => {
-        const dbItems = snapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            category: data.category || 'other'
-          };
-        }) as LinkItem[];
-        
-        dbItems.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
-        setLinks([...FIXED_LINKS, ...dbItems]);
-        setLoading(false);
-      },
-      (error) => {
-        console.error("Error:", error);
-        setLinks([...FIXED_LINKS]);
-        setLoading(false);
-      }
-    );
-    return () => unsubscribeData();
-  }, [user]);
-
-  // --- Handlers ---
-  const handleLogin = async () => await signInAnonymously(auth);
-  const handleLogout = async () => {
-    setIsAdmin(false);
-    setShowAdminPanel(false);
-    await signOut(auth);
-  };
-
-  const handleAdminLogin = () => {
-    const input = prompt("請輸入管理員密碼：");
-    if (input === ADMIN_PASSWORD) {
-      setIsAdmin(true);
-      setShowAdminPanel(true);
-    } else if (input !== null) {
-      alert("密碼錯誤");
-    }
-  };
-
-  const handleAddOrEditLink = async (data: Omit<LinkItem, 'id' | 'createdAt' | 'addedBy'>) => {
-    if (!user) return;
-
-    try {
-      if (editingLink) {
-        // Edit Mode
-        if (editingLink.id.startsWith('auto-')) {
-          alert('系統固定連結無法編輯');
-          return;
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NBS_AI應用分享</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif; 
+            -webkit-tap-highlight-color: transparent;
         }
-        await updateDoc(doc(db, 'artifacts', DB_SCOPE, 'public', 'data', 'sharedLinks', editingLink.id), {
-          ...data
-        });
-      } else {
-        // Add Mode
-        await addDoc(collection(db, 'artifacts', DB_SCOPE, 'public', 'data', 'sharedLinks'), {
-          ...data,
-          createdAt: serverTimestamp(),
-          addedBy: user.uid
-        });
-      }
-      setIsModalOpen(false);
-      setEditingLink(null);
-    } catch (e) {
-      console.error(e);
-      alert('操作失敗，請確認資料庫權限');
-    }
-  };
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .fade-in-up { animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; transform: translateY(20px); }
+        @keyframes fadeInUp { to { opacity: 1; transform: translateY(0); } }
+        
+        .glass {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen pb-24 text-slate-800 selection:bg-indigo-100 selection:text-indigo-700">
 
-  const handleDeleteLink = async (id: string) => {
-    if (id.startsWith('auto-')) {
-      alert('系統固定連結無法刪除，請由程式碼修改');
-      return;
-    }
-    if (!confirm('確定要刪除這個連結嗎？此動作無法復原。')) return;
-    
-    try {
-      await deleteDoc(doc(db, 'artifacts', DB_SCOPE, 'public', 'data', 'sharedLinks', id));
-    } catch (e) {
-      console.error(e);
-      alert('刪除失敗');
-    }
-  };
-
-  const openEditModal = (link: LinkItem) => {
-    setEditingLink(link);
-    setIsModalOpen(true);
-  };
-
-  const openAddModal = () => {
-    setEditingLink(null);
-    setIsModalOpen(true);
-  };
-
-  // --- Filtering ---
-  const filteredLinks = useMemo(() => {
-    return links.filter(link => {
-      const matchCategory = filter === 'all' || link.category === filter;
-      const matchSearch = searchTerm === '' || 
-        link.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        link.url.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchCategory && matchSearch;
-    });
-  }, [links, filter, searchTerm]);
-
-  // --- Render ---
-  if (!user) return <LoginScreen onLogin={handleLogin} />;
-
-  return (
-    <div className="min-h-screen bg-slate-50 pb-20">
-      {/* Header */}
-      <header className="bg-white sticky top-0 z-30 border-b border-gray-200 safe-top">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg overflow-hidden shadow-sm border border-gray-100 bg-white p-0.5">
-              <LogoDisplay className="w-full h-full rounded-md" />
-            </div>
-            <div>
-              <h1 className="font-bold text-gray-800 text-lg leading-tight">NBS_AI應用分享</h1>
-              <p className="text-[10px] text-gray-400 font-medium tracking-wider">RESOURCE HUB</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            {isAdmin ? (
-              <button 
-                onClick={() => setShowAdminPanel(true)}
-                className="p-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-full transition-colors"
-                title="開啟管理後台"
-              >
-                <ShieldCheck className="w-5 h-5" />
-              </button>
-            ) : (
-              <button 
-                onClick={handleAdminLogin}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
-                title="管理員登入"
-              >
-                <Settings className="w-5 h-5" />
-              </button>
-            )}
-            <button 
-              onClick={handleLogout}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
-            >
-              <LogOut className="w-5 h-5" />
-            </button>
-          </div>
+    <!-- 應用程式容器 -->
+    <div id="app" class="relative max-w-md mx-auto min-h-screen flex flex-col bg-white shadow-2xl overflow-hidden">
+        
+        <!-- 載入中畫面 -->
+        <div id="loading-screen" class="flex-1 flex flex-col items-center justify-center bg-white z-50 absolute inset-0">
+            <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+            <p class="mt-4 text-gray-400 text-xs tracking-widest animate-pulse">SYSTEM LOADING</p>
         </div>
 
-        {/* Search Bar */}
-        <div className="max-w-3xl mx-auto px-4 pb-2">
-          <div className="relative group">
-            <input
-              type="text"
-              placeholder="搜尋連結..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:border-transparent outline-none transition-all text-sm"
-            />
-            <Search className="absolute left-3 top-2.5 w-5 h-5 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
-            {searchTerm && (
-              <button 
-                onClick={() => setSearchTerm('')}
-                className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Categories Filter */}
-        <div className="px-4 pb-3 max-w-3xl mx-auto flex gap-2 overflow-x-auto no-scrollbar items-center">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors border ${
-              filter === 'all' 
-                ? 'bg-gray-800 text-white border-gray-800' 
-                : 'bg-white text-gray-600 border-gray-200'
-            }`}
-          >
-            全部
-          </button>
-          {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
-            <button
-              key={key}
-              onClick={() => setFilter(key as CategoryType)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-1.5 border ${
-                filter === key 
-                  ? `${config.color.replace('bg-', 'bg-opacity-100 ').replace('text-', 'text-white bg-')}`
-                  : 'bg-white text-gray-600 border-gray-200'
-              } ${filter === key ? 'border-transparent shadow-sm' : ''}`}
-              style={filter === key ? { backgroundColor: 'var(--tw-bg-opacity)' } : {}}
-            >
-              {filter === key ? (
-                <span className={`flex items-center gap-1.5 ${config.color} px-2 -ml-2 py-0.5 rounded-full bg-opacity-20`}>
-                   <config.icon className="w-3.5 h-3.5" />
-                   {config.label}
-                </span>
-              ) : (
-                <>
-                  <config.icon className="w-3.5 h-3.5 opacity-50" />
-                  {config.label}
-                </>
-              )}
-            </button>
-          ))}
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-3xl mx-auto p-4 space-y-4">
-        {loading ? (
-          <div className="flex justify-center py-10">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-          </div>
-        ) : filteredLinks.length === 0 ? (
-          <div className="text-center py-20 text-gray-400">
-            <div className="bg-gray-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-200">
-              <Search className="w-8 h-8 opacity-20" />
-            </div>
-            <p className="font-medium text-gray-500">找不到相關資源</p>
-            <p className="text-xs mt-1">請嘗試其他關鍵字或分類</p>
-          </div>
-        ) : (
-          filteredLinks.map((link, idx) => {
-            const catConfig = CATEGORY_CONFIG[link.category] || CATEGORY_CONFIG.other;
-            return (
-              <div 
-                key={link.id}
-                className="group bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-all active:scale-[0.99] relative overflow-hidden"
-                style={{ animationDelay: `${idx * 50}ms` }}
-              >
-                {/* Category Badge */}
-                <div className={`absolute top-0 right-0 px-3 py-1 rounded-bl-xl text-[10px] font-bold tracking-wider uppercase ${catConfig.color} bg-opacity-10`}>
-                  {catConfig.label}
+        <!-- 登入畫面 -->
+        <div id="login-screen" class="hidden flex-1 flex flex-col items-center justify-center p-8 absolute inset-0 z-40 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900">
+            <div class="w-full max-w-sm text-center fade-in-up">
+                <div class="bg-white p-2 w-28 h-28 rounded-3xl mx-auto mb-8 shadow-2xl shadow-indigo-500/20 rotate-3 transition-transform hover:rotate-0 duration-500">
+                    <img src="https://meee.com.tw/cBmkwvn" class="w-full h-full object-contain rounded-2xl" alt="Logo">
                 </div>
+                <h1 class="text-3xl font-bold text-white mb-2 tracking-tight">NBS_AI應用分享</h1>
+                <p class="text-indigo-200/80 mb-10 text-sm font-light">
+                    整合 • 效率 • 資源<br/>您的專屬 AI 知識庫
+                </p>
+                
+                <button onclick="login()" id="login-btn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-6 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-3 shadow-xl shadow-indigo-900/50 group">
+                    <i data-lucide="lock" class="w-5 h-5 group-hover:scale-110 transition-transform"></i>
+                    <span>進入系統</span>
+                </button>
+                <p class="mt-8 text-[10px] text-indigo-400/30 uppercase tracking-widest">Powered by Firebase</p>
+            </div>
+        </div>
 
-                <div className="flex items-start gap-4">
-                  {/* Icon Box */}
-                  <div className={`shrink-0 w-12 h-12 rounded-xl flex items-center justify-center mt-1 shadow-sm ${
-                    link.type === 'gem' ? 'bg-indigo-50 text-indigo-600' : 
-                    link.type === 'notebook' ? 'bg-amber-50 text-amber-600' : 
-                    'bg-emerald-50 text-emerald-600'
-                  }`}>
-                    {link.type === 'gem' && <Bot className="w-6 h-6" />}
-                    {link.type === 'notebook' && <BookOpen className="w-6 h-6" />}
-                    {link.type === 'other' && <LinkIcon className="w-6 h-6" />}
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0 pr-8">
-                    <h3 className="font-bold text-gray-800 text-[17px] leading-snug mb-1 line-clamp-2">{link.title}</h3>
-                    
-                    {link.description && (
-                      <p className="text-xs text-gray-500 line-clamp-1 mb-2">{link.description}</p>
-                    )}
-                    
-                    <div className="flex items-center mt-3 pt-3 border-t border-gray-50">
-                      <a 
-                        href={link.url}
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex-1 flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
-                      >
-                        立即開啟 <ExternalLink className="w-3 h-3" />
-                      </a>
+        <!-- 主畫面 -->
+        <div id="main-screen" class="hidden flex-col min-h-screen">
+            <!-- Header -->
+            <header class="sticky top-0 z-30 glass">
+                <div class="px-5 py-4 flex justify-between items-center">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl overflow-hidden border border-gray-100 bg-gray-50 p-0.5">
+                            <img src="https://meee.com.tw/cBmkwvn" class="w-full h-full object-contain rounded-lg" alt="Logo">
+                        </div>
+                        <div>
+                            <h1 class="font-bold text-gray-800 text-lg leading-tight">NBS_AI</h1>
+                            <p class="text-[10px] text-indigo-600 font-bold tracking-wider">RESOURCE HUB</p>
+                        </div>
                     </div>
-                  </div>
+                    <div class="flex items-center gap-1">
+                        <button onclick="toggleAdmin()" id="admin-btn" class="p-2.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-all">
+                            <i data-lucide="settings" class="w-5 h-5"></i>
+                        </button>
+                        <button onclick="logout()" class="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all">
+                            <i data-lucide="log-out" class="w-5 h-5"></i>
+                        </button>
+                    </div>
                 </div>
-              </div>
-            );
-          })
-        )}
-      </main>
 
-      {/* FAB - 僅管理員可見，或視為大家都能新增 */}
-      <button
-        onClick={openAddModal}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg shadow-indigo-600/40 flex items-center justify-center hover:bg-indigo-700 active:scale-90 transition-all z-40"
-      >
-        <Plus className="w-7 h-7" />
-      </button>
+                <!-- Search Bar -->
+                <div class="px-5 pb-2">
+                    <div class="relative group">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i data-lucide="search" class="h-4 w-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors"></i>
+                        </div>
+                        <input type="text" id="search-input" oninput="handleSearch(this.value)" 
+                            class="block w-full pl-10 pr-3 py-2.5 border-none rounded-xl bg-gray-100 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition-all" 
+                            placeholder="搜尋連結、關鍵字...">
+                    </div>
+                </div>
+                
+                <!-- Categories -->
+                <div class="px-5 pb-4 pt-2 flex gap-2.5 overflow-x-auto no-scrollbar items-center" id="category-filter-container">
+                    <!-- JS 生成按鈕 -->
+                </div>
+            </header>
 
-      {/* Modals */}
-      <AddLinkModal 
-        isOpen={isModalOpen} 
-        onClose={() => { setIsModalOpen(false); setEditingLink(null); }} 
-        onAdd={handleAddOrEditLink}
-        initialData={editingLink}
-      />
+            <!-- Links List -->
+            <main class="p-5 space-y-4 flex-1 overflow-y-auto bg-gray-50/50" id="links-container">
+                <!-- JS 生成卡片 -->
+            </main>
 
-      {showAdminPanel && (
-        <AdminPanel 
-          links={links} 
-          onDelete={handleDeleteLink} 
-          onEdit={openEditModal}
-          onAdd={openAddModal}
-          onClose={() => setShowAdminPanel(false)}
-        />
-      )}
+            <!-- FAB (管理員才顯示) -->
+            <button id="fab-add" onclick="openModal()" class="hidden fixed bottom-8 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-2xl shadow-indigo-600/40 items-center justify-center hover:bg-indigo-700 active:scale-90 transition-all z-40">
+                <i data-lucide="plus" class="w-7 h-7"></i>
+            </button>
+        </div>
     </div>
-  );
-}
+
+    <!-- 新增連結 Modal -->
+    <div id="add-modal" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm transition-all duration-300">
+        <div class="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden animate-[slideUp_0.3s_ease-out]">
+            <div class="p-6">
+                <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6 sm:hidden"></div>
+                <h2 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    <div class="bg-indigo-100 p-2 rounded-lg text-indigo-600">
+                        <i data-lucide="plus-circle" class="w-5 h-5"></i>
+                    </div>
+                    新增資源
+                </h2>
+                <form onsubmit="handleAdd(event)" class="space-y-5">
+                    <div class="space-y-1.5">
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">連結網址</label>
+                        <input type="url" id="input-url" required placeholder="https://..." class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">標題</label>
+                        <input type="text" id="input-title" required placeholder="請輸入標題" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">分類</label>
+                        <div class="relative">
+                            <select id="input-category" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all">
+                                <option value="other">其它</option>
+                                <option value="admin">行政</option>
+                                <option value="marketing">行銷</option>
+                                <option value="recruiting">增員</option>
+                                <option value="product">商品</option>
+                                <option value="community">社群</option>
+                                <option value="claims">理賠</option>
+                                <option value="fun">好玩</option>
+                            </select>
+                            <i data-lucide="chevron-down" class="absolute right-4 top-3.5 w-5 h-5 text-gray-400 pointer-events-none"></i>
+                        </div>
+                    </div>
+                    <div class="flex gap-3 pt-4">
+                        <button type="button" onclick="closeModal()" class="flex-1 px-4 py-3.5 bg-gray-100 rounded-xl text-gray-600 font-bold hover:bg-gray-200 transition-colors">取消</button>
+                        <button type="submit" class="flex-1 px-4 py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-colors">確認</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, onSnapshot, serverTimestamp, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // --- 設定區 ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyB7RDcx7irw6JyRUx-qhBEMUunH__c0I04",
+            authDomain: "nbs168-ai01.firebaseapp.com",
+            projectId: "nbs168-ai01",
+            storageBucket: "nbs168-ai01.firebasestorage.app",
+            messagingSenderId: "911620241362",
+            appId: "1:911620241362:web:8b49b515749b51c0e37a0b",
+            measurementId: "G-NZTWEVM6H4"
+        };
+        const DB_SCOPE = 'nbs-ai-share';
+        const ADMIN_PASS = '888888'; // 管理員密碼
+
+        // --- 資料 ---
+        const IMPORTED_DATA = [
+            "NBS-分析YT影片 | https://gemini.google.com/gem/a721cbc618f9 | 其它",
+            "NBS-FAB 行銷 LINE 邀約話稿生成器 | https://gemini.google.com/gem/97b7f3ac234f | 行銷",
+            "NBS設計_四格漫畫腳本生成器（金融保險職場版｜合規） | https://gemini.google.com/gem/da1761f3de1a | 社群",
+            "NBS整理_人壽健告填寫、疾病問卷與核保參考指南 | https://notebooklm.google.com/notebook/7824725f-c976-400f-943c-b5097f35766c | 行政",
+            "NBS整理_保戶服務與契約變更事項 | https://notebooklm.google.com/notebook/d69dff67-4ecf-43d1-b71e-06d226f032bd | 行政",
+            "NBS整理_人壽首期保費扣款核印天數指南 | https://notebooklm.google.com/notebook/c9e90e05-b833-44f7-b8a4-9e4ebfca95bf | 行政",
+            "商品_實支實付醫療險保費調漲規定 | https://notebooklm.google.com/notebook/7cc5e453-e49c-448f-b582-ce9e2f20e583 | 商品",
+            "NBS整理_保險職業分類(產壽險) | https://notebooklm.google.com/notebook/5f3e21d1-25b0-4ea2-84fd-e39051513076 | 行政",
+            "NBS整理_人壽體檢醫療院所資料與注意事項 | https://notebooklm.google.com/notebook/7c934959-3f82-4b3d-b670-dd1559e8141f | 行政",
+            "NBS整理_理賠報報：疾病、保險與實務案例 | https://notebooklm.google.com/notebook/e53fb580-1a4f-4cf6-955a-f23019fcfb7a | 理賠",
+            "NBS-冬季戀歌三格圖 – GEM版 | https://gemini.google.com/gem/79e533008773 | 好玩"
+        ];
+
+        // --- 狀態 ---
+        let currentUser = null;
+        let dbLinks = [];
+        let currentFilter = 'all';
+        let isAdmin = false;
+        let searchText = '';
+
+        // 初始化 Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- Configs ---
+        const CATEGORIES = {
+            all: { label: '全部', bg: 'bg-gray-800', text: 'text-white', icon: 'layers' },
+            admin: { label: '行政', bg: 'bg-blue-100', text: 'text-blue-700', icon: 'briefcase' },
+            marketing: { label: '行銷', bg: 'bg-pink-100', text: 'text-pink-700', icon: 'megaphone' },
+            recruiting: { label: '增員', bg: 'bg-purple-100', text: 'text-purple-700', icon: 'users' },
+            product: { label: '商品', bg: 'bg-orange-100', text: 'text-orange-700', icon: 'package' },
+            community: { label: '社群', bg: 'bg-indigo-100', text: 'text-indigo-700', icon: 'message-circle' },
+            claims: { label: '理賠', bg: 'bg-red-100', text: 'text-red-700', icon: 'clipboard-check' },
+            fun: { label: '好玩', bg: 'bg-yellow-100', text: 'text-yellow-700', icon: 'sparkles' },
+            other: { label: '其它', bg: 'bg-gray-100', text: 'text-gray-600', icon: 'more-horizontal' }
+        };
+
+        function parseCategory(str) {
+            const map = { '行政':'admin', '行銷':'marketing', '增員':'recruiting', '商品':'product', '社群':'community', '理賠':'claims', '好玩':'fun', '其它':'other' };
+            return map[str?.trim()] || 'other';
+        }
+
+        function determineType(url) {
+            if (url.includes('gemini') || url.includes('gem.google')) return 'gem';
+            if (url.includes('notebooklm')) return 'notebook';
+            return 'other';
+        }
+
+        const FIXED_LINKS = IMPORTED_DATA.map((item, idx) => {
+            const parts = item.split('|').map(s => s.trim());
+            return {
+                id: `auto-${idx}`,
+                title: parts[0],
+                url: parts[1],
+                type: determineType(parts[1]),
+                category: parseCategory(parts[2]),
+                isFixed: true
+            };
+        });
+
+        // --- Render ---
+        function renderFilters() {
+            const container = document.getElementById('category-filter-container');
+            container.innerHTML = Object.entries(CATEGORIES).map(([key, conf]) => {
+                const isActive = currentFilter === key;
+                return `
+                <button onclick="setFilter('${key}')" 
+                    class="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all duration-300 flex items-center gap-1.5 border
+                    ${isActive 
+                        ? `${conf.bg} ${conf.text} border-transparent shadow-md scale-105` 
+                        : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'
+                    }">
+                    <i data-lucide="${conf.icon}" class="w-3.5 h-3.5 ${isActive ? 'opacity-100' : 'opacity-60'}"></i> 
+                    ${conf.label}
+                </button>
+            `}).join('');
+            lucide.createIcons();
+        }
+
+        function renderLinks() {
+            const container = document.getElementById('links-container');
+            const allLinks = [...FIXED_LINKS, ...dbLinks];
+            
+            const filtered = allLinks.filter(l => {
+                const matchCat = currentFilter === 'all' || l.category === currentFilter;
+                const matchSearch = searchText === '' || l.title.toLowerCase().includes(searchText.toLowerCase());
+                return matchCat && matchSearch;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                <div class="text-center py-24 text-gray-400 fade-in-up">
+                    <div class="bg-white w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-gray-100">
+                        <i data-lucide="inbox" class="w-10 h-10 opacity-30"></i>
+                    </div>
+                    <p class="text-sm font-medium">找不到相關資源</p>
+                </div>`;
+            } else {
+                container.innerHTML = filtered.map((link, idx) => {
+                    const cat = CATEGORIES[link.category] || CATEGORIES.other;
+                    const typeIcon = link.type === 'gem' ? 'bot' : link.type === 'notebook' ? 'book-open' : 'link';
+                    const typeStyle = link.type === 'gem' 
+                        ? 'bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-indigo-200' 
+                        : link.type === 'notebook' 
+                        ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-orange-200' 
+                        : 'bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-emerald-200';
+                    
+                    return `
+                    <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100/50 hover:shadow-lg transition-all duration-300 relative overflow-hidden group active:scale-[0.98] fade-in-up" 
+                         style="animation-delay: ${idx * 50}ms"
+                         onclick="window.open('${link.url}', '_blank')">
+                        
+                        <!-- 裝飾背景 -->
+                        <div class="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-gray-50 to-transparent rounded-bl-full -mr-8 -mt-8 pointer-events-none"></div>
+
+                        <div class="flex items-start gap-4 relative z-10">
+                            <!-- 圖示 -->
+                            <div class="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center shadow-lg ${typeStyle}">
+                                <i data-lucide="${typeIcon}" class="w-6 h-6"></i>
+                            </div>
+
+                            <!-- 內容 -->
+                            <div class="flex-1 min-w-0 pr-6">
+                                <div class="flex justify-between items-start mb-1">
+                                    <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase ${cat.bg} ${cat.text} bg-opacity-50">
+                                        ${cat.label}
+                                    </span>
+                                </div>
+                                <h3 class="font-bold text-gray-800 text-[17px] leading-tight mb-1.5 line-clamp-2">${link.title}</h3>
+                                
+                                <div class="flex items-center justify-between mt-3 border-t border-gray-50 pt-3">
+                                    <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 group-hover:translate-x-1 transition-transform">
+                                        立即開啟 <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                                    </span>
+                                    
+                                    ${(isAdmin && !link.isFixed) ? `
+                                    <button onclick="event.stopPropagation(); deleteLink('${link.id}')" class="w-8 h-8 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                    </button>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+            lucide.createIcons();
+        }
+
+        // --- Functions ---
+        window.login = async () => {
+            const btn = document.getElementById('login-btn');
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = `<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>`;
+            btn.disabled = true;
+            try { await signInAnonymously(auth); } 
+            catch (e) { 
+                alert("登入失敗，請檢查網路或 Firebase 設定"); 
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+            }
+        };
+
+        window.logout = () => {
+            isAdmin = false;
+            updateAdminUI();
+            signOut(auth);
+        };
+
+        window.setFilter = (f) => { currentFilter = f; renderFilters(); renderLinks(); };
+        window.handleSearch = (val) => { searchText = val; renderLinks(); };
+
+        window.toggleAdmin = () => {
+            if (isAdmin) {
+                isAdmin = false;
+                alert("已登出管理員模式");
+            } else {
+                const pass = prompt("請輸入管理員密碼：");
+                if (pass === ADMIN_PASS) {
+                    isAdmin = true;
+                    alert("管理員登入成功！\n現在您可以新增或刪除連結了。");
+                } else if (pass !== null) {
+                    alert("密碼錯誤");
+                }
+            }
+            updateAdminUI();
+        };
+
+        function updateAdminUI() {
+            const fab = document.getElementById('fab-add');
+            const btn = document.getElementById('admin-btn');
+            
+            if (isAdmin) {
+                fab.classList.remove('hidden');
+                fab.classList.add('flex');
+                btn.classList.add('text-indigo-600', 'bg-indigo-50');
+            } else {
+                fab.classList.add('hidden');
+                fab.classList.remove('flex');
+                btn.classList.remove('text-indigo-600', 'bg-indigo-50');
+            }
+            renderLinks(); // Re-render to show/hide delete buttons
+        }
+        
+        window.openModal = () => document.getElementById('add-modal').classList.remove('hidden');
+        window.closeModal = () => document.getElementById('add-modal').classList.add('hidden');
+
+        window.handleAdd = async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '處理中...';
+            btn.disabled = true;
+
+            const title = document.getElementById('input-title').value;
+            const url = document.getElementById('input-url').value;
+            const category = document.getElementById('input-category').value;
+            const type = determineType(url);
+            
+            try {
+                await addDoc(collection(db, 'artifacts', DB_SCOPE, 'public', 'data', 'sharedLinks'), {
+                    title, url, type, category,
+                    createdAt: serverTimestamp(),
+                    addedBy: currentUser.uid
+                });
+                closeModal();
+                e.target.reset();
+            } catch(err) { 
+                alert("新增失敗，請檢查資料庫權限"); 
+                console.error(err); 
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        };
+
+        window.deleteLink = async (id) => {
+            if(confirm('確定要刪除這個連結嗎？')) {
+                await deleteDoc(doc(db, 'artifacts', DB_SCOPE, 'public', 'data', 'sharedLinks', id));
+            }
+        };
+
+        // --- Init ---
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            document.getElementById('loading-screen').classList.add('hidden');
+            if (user) {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('main-screen').classList.remove('hidden');
+                document.getElementById('main-screen').classList.add('flex');
+                
+                const q = query(collection(db, 'artifacts', DB_SCOPE, 'public', 'data', 'sharedLinks'));
+                onSnapshot(q, (snapshot) => {
+                    dbLinks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+                        .sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+                    renderFilters();
+                    renderLinks();
+                });
+            } else {
+                document.getElementById('login-screen').classList.remove('hidden');
+                document.getElementById('main-screen').classList.add('hidden');
+            }
+        });
+
+        window.onload = () => lucide.createIcons();
+    </script>
+</body>
+</html>
