@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <!-- ⚠️ 重要：存檔時請務必在記事本右下角選擇「編碼：UTF-8」，否則會變亂碼 -->
+    <!-- ⚠️ 關鍵步驟：存檔時請務必在記事本右下角選擇「編碼：UTF-8」，否則網頁會變亂碼 -->
     <meta charset="UTF-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -46,7 +46,8 @@
             <div class="w-full max-w-sm text-center fade-in-up">
                 <!-- LOGO 區塊 -->
                 <div class="bg-white p-2 w-32 h-32 rounded-3xl mx-auto mb-8 shadow-2xl shadow-indigo-500/20 flex items-center justify-center overflow-hidden">
-                    <img src="https://meee.com.tw/cBmkwvn" class="w-full h-full object-contain rounded-2xl" alt="NBS Logo" onerror="this.style.display='none'; this.parentNode.innerHTML='<span class=\'text-4xl font-black text-indigo-600\'>NBS</span>'">
+                    <img src="https://meee.com.tw/cBmkwvn" class="w-full h-full object-contain rounded-2xl" alt="NBS Logo" 
+                         onerror="this.onerror=null; this.parentNode.innerHTML='<span class=\'text-4xl font-black text-indigo-600\'>NBS</span>'">
                 </div>
                 
                 <h1 class="text-3xl font-bold text-white mb-2 tracking-tight">NBS_AI應用分享</h1>
@@ -70,7 +71,7 @@
                     <div class="flex items-center gap-3">
                         <!-- 小 LOGO -->
                         <div class="w-10 h-10 rounded-xl overflow-hidden border border-gray-100 bg-white p-0.5">
-                            <img src="https://meee.com.tw/cBmkwvn" class="w-full h-full object-contain rounded-lg" alt="Logo">
+                            <img src="https://meee.com.tw/cBmkwvn" class="w-full h-full object-contain rounded-lg" alt="Logo" onerror="this.style.display='none'">
                         </div>
                         <div>
                             <h1 class="font-bold text-gray-800 text-lg leading-tight">NBS_AI</h1>
@@ -145,6 +146,7 @@
                                 <option value="admin">行政</option>
                                 <option value="marketing">行銷</option>
                                 <option value="recruiting">增員</option>
+                                <option value="finance">財經</option>
                                 <option value="product">商品</option>
                                 <option value="community">社群</option>
                                 <option value="claims">理賠</option>
@@ -181,7 +183,7 @@
         const DB_SCOPE = 'nbs-ai-share';
         const ADMIN_PASS = '888888'; // 管理員密碼
 
-        // --- 資料 ---
+        // --- 資料 (已更新至您上傳的最新版本) ---
         const IMPORTED_DATA = [
             "NBS-分析YT影片 | https://gemini.google.com/gem/a721cbc618f9 | 其它",
             "NBS-FAB 行銷 LINE 邀約話稿生成器 | https://gemini.google.com/gem/97b7f3ac234f | 行銷",
@@ -193,7 +195,13 @@
             "NBS整理_保險職業分類(產壽險) | https://notebooklm.google.com/notebook/5f3e21d1-25b0-4ea2-84fd-e39051513076 | 行政",
             "NBS整理_人壽體檢醫療院所資料與注意事項 | https://notebooklm.google.com/notebook/7c934959-3f82-4b3d-b670-dd1559e8141f | 行政",
             "NBS整理_理賠報報：疾病、保險與實務案例 | https://notebooklm.google.com/notebook/e53fb580-1a4f-4cf6-955a-f23019fcfb7a | 理賠",
-            "NBS-冬季戀歌三格圖 – GEM版 | https://gemini.google.com/gem/79e533008773 | 好玩"
+            "NBS-冬季戀歌三格圖 – GEM版 | https://gemini.google.com/gem/79e533008773 | 好玩",
+            "NBS22保險業務員《行銷/增員》轉介紹練習抽卡系統 | https://gemini.google.com/gem/93ffd286a770 | 行銷/增員",
+            "NBS《行銷、增員》陌生開發系統抽卡練習V1 | https://gemini.google.com/gem/d856e801280c | 行銷/增員",
+            "NBS09A保險業務員《行銷》退休規劃_激發興趣系統練習抽卡系統 | https://gemini.google.com/gem/84aa1a0eda3b | 行銷",
+            "NBS設計_自動生成《通關認證檢核表》【上傳條款、話術、行銷分享】 | https://gemini.google.com/gem/14f34c00cee3 | 行銷",
+            "NBS設計→ 客戶興趣激發與 LINE 實戰模擬教練 | https://gemini.google.com/gem/9b126c450f0f | 行銷",
+            "NBS 國際財經定聯教材生成器V1.0 | https://gemini.google.com/gem/c4796d8dd065 | 財經"
         ];
 
         // --- 狀態 ---
@@ -214,6 +222,7 @@
             admin: { label: '行政', bg: 'bg-blue-100', text: 'text-blue-700', icon: 'briefcase' },
             marketing: { label: '行銷', bg: 'bg-pink-100', text: 'text-pink-700', icon: 'megaphone' },
             recruiting: { label: '增員', bg: 'bg-purple-100', text: 'text-purple-700', icon: 'users' },
+            finance: { label: '財經', bg: 'bg-emerald-100', text: 'text-emerald-700', icon: 'trending-up' }, // 新增財經
             product: { label: '商品', bg: 'bg-orange-100', text: 'text-orange-700', icon: 'package' },
             community: { label: '社群', bg: 'bg-indigo-100', text: 'text-indigo-700', icon: 'message-circle' },
             claims: { label: '理賠', bg: 'bg-red-100', text: 'text-red-700', icon: 'clipboard-check' },
@@ -222,8 +231,20 @@
         };
 
         function parseCategory(str) {
-            const map = { '行政':'admin', '行銷':'marketing', '增員':'recruiting', '商品':'product', '社群':'community', '理賠':'claims', '好玩':'fun', '其它':'other' };
-            return map[str?.trim()] || 'other';
+            const s = str?.trim();
+            const map = { 
+                '行政':'admin', '行銷':'marketing', '增員':'recruiting', 
+                '商品':'product', '社群':'community', '理賠':'claims', 
+                '好玩':'fun', '財經':'finance', '其它':'other' 
+            };
+            if (map[s]) return map[s];
+            
+            // 處理複合分類 (例如: 行銷/增員)
+            if (s.includes('增員')) return 'recruiting';
+            if (s.includes('行銷')) return 'marketing';
+            if (s.includes('財經')) return 'finance';
+            
+            return 'other';
         }
 
         function determineType(url) {
@@ -234,6 +255,7 @@
 
         const FIXED_LINKS = IMPORTED_DATA.map((item, idx) => {
             const parts = item.split('|').map(s => s.trim());
+            if (parts.length < 2) return null; // Skip empty lines
             return {
                 id: `auto-${idx}`,
                 title: parts[0],
@@ -242,7 +264,7 @@
                 category: parseCategory(parts[2]),
                 isFixed: true
             };
-        });
+        }).filter(Boolean);
 
         // --- Render ---
         function renderFilters() {
