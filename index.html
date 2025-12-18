@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
+    <!-- 1. 強制設定編碼為 UTF-8，解決亂碼問題 -->
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>NBS_AI應用分享</title>
     <!-- Tailwind CSS -->
@@ -12,7 +14,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         body { 
-            font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif; 
+            font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif; 
             -webkit-tap-highlight-color: transparent;
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -21,7 +23,7 @@
         @keyframes fadeInUp { to { opacity: 1; transform: translateY(0); } }
         
         .glass {
-            background: rgba(255, 255, 255, 0.85);
+            background: rgba(255, 255, 255, 0.9);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             border-bottom: 1px solid rgba(0, 0, 0, 0.05);
@@ -42,9 +44,12 @@
         <!-- 登入畫面 -->
         <div id="login-screen" class="hidden flex-1 flex flex-col items-center justify-center p-8 absolute inset-0 z-40 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900">
             <div class="w-full max-w-sm text-center fade-in-up">
-                <div class="bg-white p-2 w-28 h-28 rounded-3xl mx-auto mb-8 shadow-2xl shadow-indigo-500/20 rotate-3 transition-transform hover:rotate-0 duration-500">
-                    <img src="https://meee.com.tw/cBmkwvn" class="w-full h-full object-contain rounded-2xl" alt="Logo">
+                <!-- LOGO 區塊：使用文字圖示替代，避免破圖 -->
+                <div class="bg-white p-4 w-32 h-32 rounded-3xl mx-auto mb-8 shadow-2xl shadow-indigo-500/20 flex items-center justify-center">
+                    <!-- 如果之後有正確的圖片網址，可以把下方的 span 換成 img 標籤 -->
+                    <span class="text-4xl font-black text-indigo-600 tracking-tighter">NBS</span>
                 </div>
+                
                 <h1 class="text-3xl font-bold text-white mb-2 tracking-tight">NBS_AI應用分享</h1>
                 <p class="text-indigo-200/80 mb-10 text-sm font-light">
                     整合 • 效率 • 資源<br/>您的專屬 AI 知識庫
@@ -64,8 +69,9 @@
             <header class="sticky top-0 z-30 glass">
                 <div class="px-5 py-4 flex justify-between items-center">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl overflow-hidden border border-gray-100 bg-gray-50 p-0.5">
-                            <img src="https://meee.com.tw/cBmkwvn" class="w-full h-full object-contain rounded-lg" alt="Logo">
+                        <!-- 小 LOGO -->
+                        <div class="w-10 h-10 rounded-xl overflow-hidden border border-gray-100 bg-indigo-600 flex items-center justify-center text-white font-bold text-xs">
+                            NBS
                         </div>
                         <div>
                             <h1 class="font-bold text-gray-800 text-lg leading-tight">NBS_AI</h1>
